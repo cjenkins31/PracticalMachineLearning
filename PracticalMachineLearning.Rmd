@@ -1,0 +1,122 @@
+---
+title: "Practical Machine Learning Course Project"
+output: pdf_document
+date: "June 11, 2016"
+---
+
+##Overview
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this project is to build a machine learning algorithm to predict activity quality (classe) from activity monitors.
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Libraries
+```{r}
+library(caret)
+library(randomForest)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+```
+
+##Loading the Data
+```{r}
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(trainUrl, na.strings=c("NA","#DIV/0!",""), header=TRUE)
+testing <- read.csv(testUrl, na.strings=c("NA","#DIV/0!",""), header=TRUE)
+
+str(training)
+summary(training$classe)
+```
+
+##Cleaning the Data
+I will remove columns with NA's, factor variables, and columns not useful as predictors
+```{r}
+classe <- training$classe
+
+#remove columns with NA's
+training <- training[,colSums(is.na(training))==0]
+testing <- testing[,colSums(is.na(testing))==0]
+
+#remove factor variables
+training <- training[, sapply(training, is.numeric)]
+testing <- testing[, sapply(testing, is.numeric)]
+
+#remove 1st 4 columns (X, timestamps, window)
+training <- training[5:length(training)]
+testing <- testing[5:length(testing)]
+
+#add classe column back to training data set
+training$classe <- classe
+```
+
+##Split Training Data for Cross Validation
+Split the training data into a training data set (60%) and a validation data set (40%) that will be used for cross validation
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+myTrain <- training[inTrain, ]
+myTest <- training[-inTrain, ]
+dim(myTrain)
+dim(myTest)
+```
+
+##Data Modeling - Random Forest
+I decided to use the random forest model to build my machine learning algorithm as it is appropriate for a classification problem as we have and based on information provided in class lectures this model tends to be more accurate than some other classification models.
+
+We will use 5-fold cross validation when applying the algorithm.
+
+Below I fit my model on my training data and then use my model to predict classe on my subset of data used for cross validation.
+```{r}
+set.seed(1204)
+controlRf <- trainControl(method="cv", 5)
+modelRf <- train(classe ~ ., data=myTrain, method="rf", trControl=controlRf, ntree=250)
+modelRf
+
+
+predictRf <- predict(modelRf, myTest)
+confusionMatrix(myTest$classe, predictRf)
+
+#model accuarcy
+accuracy <- postResample(predictRf, myTest$classe)
+accuracy
+accuracy1 <- accuracy[1]
+
+#out-of-sample error
+oose <- 1 - as.numeric(confusionMatrix(myTest$classe, predictRf)$overall[1])
+oose
+```
+The accuracy is `r accuracy1` and the out-of-sample error is `r oose`.
+
+
+##Predicting for Test Data Set
+```{r}
+#remove problem_id from test data set
+x <- length(testing)-1
+testing <- testing[1:x]
+final <- predict(modelRf, testing)
+final
+```
+
+##Appendix
+###Correlation Matrix
+```{r}
+x <- length(myTrain)-1
+myTrain2 <- myTrain[1:x]
+corrPlot <- cor(myTrain2)
+corrplot(corrPlot, method="color")
+```
+
+###Decision Tree
+```{r}
+treeModel <- rpart(classe ~ ., data=myTrain, method="class")
+prp(treeModel)
+```
+
+
